@@ -10,39 +10,100 @@ The system dynamically adjusts traffic signal durations based on detected traffi
 Many works use accelerometer + gyroscope from phones to detect potholes via RMS/peak detection, handcrafted features, or lightweight ML (SVM, RF). These are real-time, low-cost and robust when using sliding windows and robust scaling.
 2. **YOLO (real-time CV) for traffic monitoring.**  
 YOLO (and recent YOLOv8) is widely used for real-time vehicle/pedestrian detection and counting; many works build traffic-flow estimators, vehicle classification, and trackers (SORT/ByteTrack) on top of YOLO for live signal control.
-3. **Roughness to speed relationship (empirical evidence).**  
-Econometric work shows road roughness (IRI) correlates with lower vehicular speeds; one study finds **≈11% decrease in average speed per +1 SD increase in IRI**, a useful empirical anchor for mapping roughness → speed reduction. [Link to paper](https://www.nber.org/system/files/working_papers/w29176/w29176.pdf)
+3. **BATCS**
+The Bengaluru traffic police has announced deployment of the Bengaluru Adaptive Traffic Control System(BATCS) designed to optimise traffic flow and reduce delays accross cities. [(More info)](https://timesofindia.indiatimes.com/auto/policy-and-industry/bengaluru-police-deploys-ai-based-traffic-control-system-heres-how-it-works/articleshow/114139000.cms)
+4. **Roughness to speed relationship (empirical evidence).**  
+Econometric work shows road roughness (IRI) correlates with lower vehicular speeds; one study finds **≈11% decrease in average speed per +1 SD increase in IRI**, a useful empirical anchor for mapping roughness → speed reduction. [(Link to paper)](https://www.nber.org/system/files/working_papers/w29176/w29176.pdf)
 
 ## Implementation
 This project integrates **YOLOv8-based traffic monitoring** with **ADAS (Advanced Driver Assistance System) sensor analytics** to create an intelligent traffic management and safety system. The model dynamically adjusts **traffic light durations** and **speed limits** based on real-time conditions which include vehicle density, pedestrian presence, and road surface irregularities(potholes). By combining vision-based and sensor-based intelligence, it aims to enhance both **traffic efficiency** and **road safety**.
-### Counting task: YOLOv8m model
+### Counting task: YOLOv8m model [(code)](./YOLOv8_density_tracker.ipynb)
 The current implementation uses a custom wrapper around YOLOv8m model from Ultralytics to count the number of pedestrians and vehicles from camera image feed obtained every 15 minutes. 
 The custom wrapper breaks the image into a 2x2 matrix and applies counting on all 4 of cropped parts separately, to enhance the counting accuracy. 
 Currently, the untrained YOLOv8m model with custom parameters operated under the setup mentioned above gives an accuracy of around 80% which translates to missing out on miscalculation of only 5-6 pedestrians/vehicles.
 
-### Road irregularity tracker: ADAS [Colab link](https://colab.research.google.com/drive/1flwL1qh2Foieq078tagFelvMjhlxD3zq?usp=sharing)
+**Proposed Signal timing calculation:**
+1. **Defining constants**
+
+	$S_{min} = 30s$
+
+	$S_{max} = 120s$
+
+	$\alpha = 0.8, \beta = 0.5, \gamma = 0.6$
+
+	$\lambda = 0.8$ (smoothing factor)
+
+	$T_{t-1}$ = Previous signal time
+
+	$D_t$ = Traffic density
+
+	$P_t$ = People density$
+
+	$I_t$ = Road Irregularity Score
+
+	Here, $\alpha$, $\beta$ and $\gamma$ denote the weights for people, traffic and irregularity scores that together help determine the signal timing
+
+2. **Timing Computation**
+	
+	Following is the calculation of green signal timing. For red signal, we just swap the $D_t$ and $P_t$ values, keeping the formula same.
+
+	$R_x = clip(\alpha*D_t - \beta*P_t + \gamma*I_t, 0, 1)$
+
+	Where
+
+	$
+	{clip}(x, 0, 1) =
+	\begin{cases}
+	0, & x < 0 \\[6pt]
+	x, & 0 \le x \le 1 \\[6pt]
+	1, & x > 1
+	\end{cases}
+	$
+
+	To keep the value within $S_{min}$ and $S_{max}$,
+
+	$R_t = S_{min} + (S_{max} - S_{min}) * R_x$
+
+	Finally, to avoid abrupt fluctuations we apply smoothing. Without it, even small sensor changes in traffic, pedestrians, or road irregularity could cause large, unstable shifts.
+
+	**$T_t = \lambda*T_{t-1} + (1-\lambda)*R_t$**
+
+
+
+
+
+
+
+### Road irregularity tracker: ADAS [(code)](./road_irregularity_tracker.ipynb)
 
 For this we need a basic ADAS sensor that can provide 3-axis data of accelerometer and gyroscope separately for detecting road irregularity.
 
 **The proposed road irregularity index calculation:**
 1. **choosing parameters**
-$acc_z = accelerometerZ$
-$gyro_z = \sqrt{gyroX^2 + gyroY^2 + gyroZ^2}$
+
+	$acc_z = accelerometerZ$
+
+	$gyro_z = \sqrt{gyroX^2 + gyroY^2 + gyroZ^2}$
+
 	> `gyroX` and `gyroY` would indicate pitching or rolling (e.g., bumps or banking turns). `gyroZ` tracks how sharply the vehicle turns (left/right).
 
 	> Road roughness primarily produces vertical vibrations. Hence only `accelerometerZ` has been considered.
 
 2. **Taking sliding window RMS of acceleration and gyro**
-$acc\_z\_rms= sliding\_rms(acc_z)$
- $gyro\_z\_rms= sliding\_rms(gyro_z)$
-  RMS measures the energy of the signal. Taking it over a sliding window helps analyse how it changes over time.
+	$acc\_z\_rms= sliding\_rms(acc_z)$
+
+	$gyro\_z\_rms= sliding\_rms(gyro_z)$
+
+	RMS measures the energy of the signal. Taking it over a sliding window helps analyse how it changes over time.
   
-	  Window here is a fixed length of consecutive samples. 
-	  > If the sampling rate is e.g. 50 Hz, there will be 50 samples per window.
+	Window here is a fixed length of consecutive samples. 
+	> If the sampling rate is e.g. 50 Hz, there will be 50 samples per window.
 
 3. **Roughness Index (R\)**
 	Combine the RMS signals of acceleration and gyro to produce roughness index. Weighted combination takes place, with more weight given to acceleration changes because on encountering a pothole the acceleration is more affected.
+
 	$W_A = 0.7$
+	
 	$W_G = 0.3$
 
 	$R_{raw} = W_A*acc\_z\_rms + W_G*gyro\_z\_rms$
@@ -82,4 +143,5 @@ The system assumes a decent cloud infrastructure that will collect the ADAS data
 
 
 # Future Scope
-1. **Tuning the parameters:** Currently the parameters used are purely based on logic and there is no proof behind it. The control system can be refined with feedback from drivers.
+1. **Tuning the parameters:** Currently the parameters used are purely based on logic and there is no proof behind it. The control system can be refined with feedback from drivers which cab be probably used to train a model.
+2. **Upgradation to multiple lanes:** The traffic control can be upgraded to manage traffic for multiple lanes crossing each other. New determinants include the calculation of traffic and pedestrian densities alongwith road condition for other crossing lanes.

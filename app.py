@@ -40,7 +40,7 @@ def calculate_red_signal(traffic_density, people_density, irregularity_index, pr
     """Adaptive red duration using traffic, pedestrian, and road irregularity."""
     # More irregularity → higher chance of slowdown → slightly longer red to manage flow
     raw_red = S_MIN + (S_MAX - S_MIN) * max(
-        0, min(1, ALPHA * people_density - BETA * traffic_density + 0.4 * irregularity_index)
+        0, min(1, ALPHA * people_density - BETA * traffic_density + GAMMA * irregularity_index)
     )
     smooth_red = SMOOTHING * prev_red_time + (1 - SMOOTHING) * raw_red
     return round(smooth_red, 2)
@@ -50,7 +50,7 @@ while True:
         current_time = datetime.now().strftime("%H:%M:%S")
         people_density = random.random()
         traffic_density = random.uniform(0.7, 1.0)
-        irregularity_index = random.uniform(0.2, 0.8)  # ← Replace with real value from Colab output
+        irregularity_index = random.uniform(0.2, 0.8) # Simulated road irregularity
 
         st.markdown(
             f"<p style='font-size: 1.2rem; text-align: left; color: #fff; font-family: monospace;'>Image captured at {current_time}</p>",
@@ -76,7 +76,7 @@ while True:
         )
 
         if irregularity_index > 0.6:
-            st.warning("⚠️ Poor road condition detected — signal durations adjusted for safety!")
+            st.error("⚠️ Poor road condition detected — signal durations adjusted for safety!")
         elif signal_red > 45:
             st.error("🚦 Heavy traffic — longer red light needed!")
         elif signal_green < 30:
@@ -84,5 +84,5 @@ while True:
         else:
             st.info("⚖️ Balanced flow and road conditions detected.")
 
-    time.sleep(2)
+    time.sleep(5)
     st.rerun()
