@@ -52,6 +52,10 @@ while True:
         traffic_density = random.uniform(0.7, 1.0)
         irregularity_index = random.uniform(0.2, 0.8) # Simulated road irregularity
 
+        # 🚛 Truck restriction threshold
+        TRUCK_IRREGULARITY_LIMIT = 0.6
+        truck_allowed = irregularity_index < TRUCK_IRREGULARITY_LIMIT
+
         st.markdown(
             f"<p style='font-size: 1.2rem; text-align: left; color: #fff; font-family: monospace;'>Image captured at {current_time}</p>",
             unsafe_allow_html=True
@@ -84,5 +88,11 @@ while True:
         else:
             st.info("⚖️ Balanced flow and road conditions detected.")
 
-    time.sleep(5)
+        # 🚛 Truck restriction message
+        if not truck_allowed:
+            st.error("🚛 Heavy vehicles restricted! Road too uneven for safe passage.")
+        else:
+            st.success("✅ Trucks permitted — road within safe condition limits.")
+
+    time.sleep(2)
     st.rerun()
